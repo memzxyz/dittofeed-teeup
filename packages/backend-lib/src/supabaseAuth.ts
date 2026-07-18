@@ -1,7 +1,5 @@
 import { createDecoder } from "fast-jwt";
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import type { JWTPayload } from "jose";
-import config from "./config";
 import logger from "./logger";
 
 const decoder = createDecoder();
@@ -16,12 +14,20 @@ export interface SupabaseUser {
 
 let jwksCache: ReturnType<typeof createRemoteJWKSet> | null = null;
 
+function getJwksUrl(): string {
+  const url = process.env.SUPABASE_JWKS_URL;
+  if (!url) {
+    throw new Error(
+      "SUPABASE_JWKS_URL environment variable not set. " +
+        "Example: https://project-ref.supabase.co/auth/v1/.well-known/jwks.json",
+    );
+  }
+  return url;
+}
+
 function getJwks() {
   if (!jwksCache) {
-    const supabaseJwksUrl = config().supabaseJwksUrl;
-    if (!supabaseJwksUrl) {
-      throw new Error("SUPABASE_JWKS_URL not configured");
-    }
+    const supabaseJwksUrl = getJwksUrl();
     const url = new URL(supabaseJwksUrl);
     jwksCache = createRemoteJWKSet(url);
   }
@@ -37,7 +43,8 @@ export async function verifySupabaseJwt(
 ): Promise<SupabaseUser | null> {
   try {
     const JWKS = getJwks();
-    const { payload } = await jwtVerify(token, JWKS, {
+    const bearerToken = token.replace(/^Bearer\s+/i, "");
+    const { payload } = await jwtVerify(bearerToken, JWKS, {
       algorithms: ["RS256"],
     });
 
@@ -47,14 +54,13 @@ export async function verifySupabaseJwt(
       return null;
     }
 
+    const userMeta = payload.raw_user_meta_data as Record<string, unknown> | undefined;
+
     return {
-      sub: payload.sub ?? "",
+      sub: (payload.sub as string) ?? "",
       email,
-      email_verified:
-        (payload.email_verified as boolean) ??
-        (payload.email_confirmed_at !== undefined) ??
-        false,
-      name: (payload.name as string) ?? (payload.raw_user_meta_data as Record<string, unknown>)?.full_name as string ?? undefined,
+      email_verified: (payload.email_verified as boolean) ?? false,
+      name: (payload.name as string) ?? (userMeta?.full_name as string) ?? undefined,
       picture: (payload.picture as string) ?? undefined,
     };
   } catch (err) {
@@ -63,9 +69,11 @@ export async function verifySupabaseJwt(
   }
 }
 
-export function decodeSupabaseJwt(token: string): Record<string, unknown> | null {
+export function decodeSupabaseJwtHeaders(
+  token: string,
+): Record<string, unknown> | null {
   try {
-    const bearerToken = token.replace("Bearer ", "");
+    const bearerToken = token.replace(/^Bearer\s+/i, "");
     const decoded = bearerToken ? decoder(bearerToken) : null;
     return decoded as Record<string, unknown> | null;
   } catch {
