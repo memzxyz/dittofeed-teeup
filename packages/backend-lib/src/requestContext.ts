@@ -6,6 +6,7 @@ import { err, ok } from "neverthrow";
 import { sortBy } from "remeda";
 
 import { decodeJwtHeader } from "./auth";
+import { verifySupabaseJwt } from "./supabaseAuth";
 import config from "./config";
 import { db } from "./db";
 import {
