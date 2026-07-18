@@ -240,15 +240,32 @@ export async function getMultiTenantRequestContext({
         message: "authorizationToken is missing",
       });
     }
-    const decodedJwt = decodeJwtHeader(authorizationToken);
-
-    if (!decodedJwt) {
-      return err({
-        type: RequestContextErrorType.NotAuthenticated,
-        message: "Unable to decode jwt",
-      });
+    if (authProvider === "supabase") {
+      const supabaseUser = await verifySupabaseJwt(authorizationToken);
+      if (!supabaseUser) {
+        return err({
+          type: RequestContextErrorType.NotAuthenticated,
+          message: "Invalid Supabase JWT",
+        });
+      }
+      profile = {
+        sub: supabaseUser.sub,
+        email: supabaseUser.email,
+        email_verified: supabaseUser.email_verified,
+        picture: supabaseUser.picture,
+        name: supabaseUser.name,
+        nickname: supabaseUser.name,
+      };
+    } else {
+      const decodedJwt = decodeJwtHeader(authorizationToken);
+      if (!decodedJwt) {
+        return err({
+          type: RequestContextErrorType.NotAuthenticated,
+          message: "Unable to decode jwt",
+        });
+      }
+      profile = decodedJwt;
     }
-    profile = decodedJwt;
   }
 
   // eslint-disable-next-line @typescript-eslint/naming-convention
